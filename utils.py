@@ -1,5 +1,92 @@
 import numpy as np
 import pandas as pd
+from CustomImputer import DataFrameImputer
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error
+
+
+def merge_train_test(train, test, target):
+    train['train'] = 1
+    test['train'] = 0
+    test.insert(loc=0, column=target, value=[0 for _ in range(len(test))])
+    return pd.concat([train, test])
+
+
+def train_test_index(df, test_size=0.2, random_state=42):
+    train, _ = train_test_split(df, test_size=0.2, random_state=42)
+    df['train'] = 0
+    df.loc[train.index, 'train'] = 1
+
+
+def smooth_handling(df, on, cat_vars, m=10):
+    for var in cat_vars:
+        replace_dict, mean = calc_smooth_mean(df[df['train'] == 1], by=var, on=on, m=10)
+        df.loc[df['train'] == 1, :] = df.loc[df['train'] == 1, :].replace(replace_dict)
+        df.loc[df['train'] == 0, var] = np.where(df.loc[df['train'] == 0, var].isin(replace_dict.keys()), df.loc[df['train'] == 0, var].map(replace_dict), mean).astype(float)
+
+
+def decrease_cat_size_handling(df, cat_vars, on):
+    for var in cat_vars:
+        replace_dict = reduce_categories(df[df['train'] == 1], var, on)
+        df.replace(replace_dict, inplace=True)
+
+
+def imputation(df):
+    imputer = DataFrameImputer()
+    imputer.fit(df[df['train'] == 1])
+    return imputer.transform(df)
+
+
+def drop_columns(df, cols, variable_lists):
+    df.drop(columns=cols, inplace=True)
+    for col in cols:
+        for l in variable_lists:
+            if col in l:
+                l.remove(col)
+
+
+def one_hot_encoding(df, cat_vars):
+    to_categorical(df, cat_vars)
+    df = generate_dummies(df, cat_vars)
+    return df
+
+
+def split_train_test(df, target, id_col):
+    y_train = df.loc[df['train'] == 1, target].values
+    y_test = df.loc[df['train'] == 0, target].values
+    X_train = df[df['train'] == 1].drop(columns=[target, id_col, 'train']).values
+    X_test = df[df['train'] == 0].drop(columns=[target, id_col, 'train']).values
+    return X_train, y_train, X_test, y_test
+
+
+def split_train_test_res(df, target, id_col):
+    y_train = df.loc[df['train'] == 1, target].values
+    X_train = df[df['train'] == 1].drop(columns=[target, id_col, 'train']).values
+    X_test = df[df['train'] == 0].drop(columns=[target, id_col, 'train']).values
+    return X_train, y_train, X_test
+
+
+def fit_predict(df, estimator, target, id_col, target_out):
+    X_train, y_train, X_test = split_train_test_res(df, target, 'id')
+    estimator.fit(X_train, y_train)
+    predictions = estimator.predict(X_test)
+    test = df[df['train'] == 0].drop(columns=['train'])
+    test[target_out] = predictions
+    df_out = test[['id', target_out]]
+    return df_out
+
+
+def get_predictions(df, estimator, target, id_col, target_out):
+    X_train, y_train, X_test = split_train_test_res(df, target, 'id')
+    estimator.fit(X_train, y_train)
+    predictions_test = estimator.predict(X_test)
+    predictions_train = estimator.predict(X_train)
+    test = df[df['train'] == 0].drop(columns=['train'])
+    train = df[df['train'] == 1].drop(columns=['train'])
+    test[target_out] = predictions_test
+    train[target_out] = predictions_train
+    df_out = pd.concat([train, test]).loc[:, ['id', target_out]]
+    return df_out
 
 
 def calc_smooth_mean(df, by, on, m):
@@ -59,15 +146,15 @@ def reduce_categories(df_train, col, on, min_cat_extension=10):
     # return a replacement dict useful for train and test
     return replace_dict
 
+
 def to_categorical(df, features_list):
-    df1 = df.copy()
     for feature in features_list:
-        df1[feature] = df1[feature].astype('category',copy=False)
-    return df1
+        df[feature] = df[feature].astype('category')
+
 
 def generate_dummies(df, features_list):
     df_new = df.copy()
     for feature in features_list:
-        df_new = pd.concat([df_new,pd.get_dummies(df[feature], drop_first=True, prefix=feature)], axis=1).copy()
+        df_new = pd.concat([df_new, pd.get_dummies(df[feature], drop_first=True, prefix=feature)], axis=1).copy()
         df_new = df_new.drop(columns=[feature])
     return df_new

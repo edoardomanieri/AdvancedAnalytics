@@ -6,83 +6,60 @@ import xgboost as xgb
 from sklearn.linear_model import LinearRegression, Lasso
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error
-
-def calc_smooth_mean(df, by, on, m):
-    # Compute the global mean
-    mean = df[on].mean()
-    
-    # Compute the number of values and the mean of each group
-    agg = df.groupby(by)[on].agg(['count', 'mean']).reset_index()
-    
-    agg['smooth'] = (agg['count'] * agg['mean'] + m * mean) / (agg['count'] + m)
-    d = pd.Series(agg['smooth'].values, index=agg[by]).to_dict()
-
-    # Replace each value by the according smoothed mean
-    return d, mean
+import utils
 
 ##### min_price
 train_min = pd.read_csv("train.csv")
+train_min.drop(columns=['max_price'], inplace=True)
 test_min = pd.read_csv("test.csv")
+df = utils.merge_train_test(train_min, test_min, 'min_price')
 
 cat_vars = ['name', 'brand', 'base_name', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
 dummy_vars = ['touchscreen', 'detachable_keyboard', 'discrete_gpu']
 target_vars = ['min_price', 'max_price']
-num_vars = [col for col in train_min.columns if col not in cat_vars + dummy_vars + target_vars]
+target = 'min_price'
+num_vars = [col for col in df.columns if col not in cat_vars + dummy_vars + target_vars]
+variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 
-imputer = DataFrameImputer()
-imputer.fit(train_min)
-train_min = imputer.transform(train_min)
-test_min = imputer.transform(test_min)
+df = utils.imputation(df)
+utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists)
+# utils.decrease_cat_size_handling(df, cat_vars, target)
+# df = utils.one_hot_encoding(df, cat_vars)
+utils.smooth_handling(df, target, cat_vars)
 
-for var in cat_vars:
-    replace_dict, mean = calc_smooth_mean(train_min, by=var, on="min_price", m=10)
-    train_min.replace(replace_dict, inplace=True)
-    test_min[var] = np.where(test_min[var].isin(replace_dict.keys()), test_min[var].map(replace_dict), mean).astype(float)
-
-y_train_min = train_min['min_price'].values
-X_train_min = train_min.drop(columns = ["max_price", 'min_price', 'id', 'name', 'base_name', 'pixels_y']).values
-X_test_min = test_min.drop(columns=['id', 'name', 'base_name', 'pixels_y']).values
-
-xgb_reg = xgb.XGBRegressor(n_estimators=20, max_depth=3)
-
+xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)
 estimator = xgb_reg
-estimator.fit(X_train_min, y_train_min)
-predictions = estimator.predict(X_test_min)
-test_min['MIN'] = predictions
-df_min = test_min[['id', 'MIN']]
+
+df_min = utils.fit_predict(df, estimator, target, 'id', 'MIN')
+df_complete_predictions = utils.get_predictions(df, estimator, target, 'id', 'min_price_pred')
 
 
 ##### max_price
-train_max = pd.read_csv("train.csv")
-test_max = pd.read_csv("test.csv")
+train_min = pd.read_csv("train.csv")
+train_min.drop(columns=['min_price'], inplace=True)
+test_min = pd.read_csv("test.csv")
+df = utils.merge_train_test(train_min, test_min, 'min_price')
 
 cat_vars = ['name', 'brand', 'base_name', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
 dummy_vars = ['touchscreen', 'detachable_keyboard', 'discrete_gpu']
 target_vars = ['min_price', 'max_price']
-num_vars = [col for col in train_max.columns if col not in cat_vars + dummy_vars + target_vars]
+target = 'max_price'
+num_vars = [col for col in df.columns if col not in cat_vars + dummy_vars + target_vars]
+variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 
-imputer = DataFrameImputer()
-imputer.fit(train_max)
-train_max = imputer.transform(train_max)
-test_max = imputer.transform(test_max)
+df = utils.imputation(df)
+utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists)
+df = df.merge(df_complete_predictions, on='id')
 
-for var in cat_vars:
-    replace_dict, mean = calc_smooth_mean(train_max, by=var, on="max_price", m=10)
-    train_max.replace(replace_dict, inplace=True)
-    test_max[var] = np.where(test_max[var].isin(replace_dict.keys()), test_max[var].map(replace_dict), mean).astype(float)
+# utils.decrease_cat_size_handling(df, cat_vars, target)
+# df = utils.one_hot_encoding(df, cat_vars)
+utils.smooth_handling(df, target, cat_vars)
 
-y_train_max = train_max['max_price'].values
-X_train_max = train_max.drop(columns = ['max_price', 'min_price', 'id', 'name', 'base_name', 'pixels_y']).values
-X_test_max = test_max.drop(columns=['id', 'name', 'base_name', 'pixels_y']).values
 
-xgb_reg = xgb.XGBRegressor(n_estimators=20, max_depth=3)
-
+xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)
 estimator = xgb_reg
-estimator.fit(X_train_max, y_train_max)
-predictions = estimator.predict(X_test_max)
-test_max['MAX'] = predictions
-df_max = test_max[['id', 'MAX']]
 
+df_max = utils.fit_predict(df, estimator, target, 'id', 'MAX')
 
 ##### difference
 train_dif = pd.read_csv("train.csv")
@@ -118,6 +95,7 @@ df_dif = test_dif[['id', 'DIF']]
 
 # put together predictions
 df_out = df_min.merge(df_max, on="id").set_index("id")
+
 df_out.loc[df_out['MAX'] < df_out['MIN'], ['MIN', 'MAX']] = df_out.loc[df_out['MAX'] < df_out['MIN'], ['MIN', 'MAX']].mean(axis=1)
 
 df_out = df_max.merge(df_dif, on="id").set_index("id")
