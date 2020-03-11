@@ -7,6 +7,13 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error
 import utils
 
+# CV
+df = pd.read_csv("train.csv")
+cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
+xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)
+utils.CV_pipeline(df, xgb_reg, cat_vars, utils.smooth_handling, 'min_price')
+
+
 ##### min_price
 df = pd.read_csv("train.csv")
 utils.train_test_index(df)
@@ -22,7 +29,7 @@ df = utils.imputation(df)
 utils.drop_columns(df, ['name', 'base_name', 'pixels_y', 'max_price'], variable_lists)
 # utils.decrease_cat_size_handling(df, cat_vars, target)
 # df = utils.one_hot_encoding(df, cat_vars)
-utils.smooth_handling(df, target, cat_vars)
+utils.smooth_handling(df, cat_vars, target)
 
 xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)
 estimator = xgb_reg
@@ -47,7 +54,7 @@ df = df.merge(df_complete_predictions, on='id')
 
 # utils.decrease_cat_size_handling(df, cat_vars, target)
 # df = utils.one_hot_encoding(df, cat_vars)
-utils.smooth_handling(df, target, cat_vars)
+utils.smooth_handling(df, cat_vars, target)
 
 xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)
 estimator = xgb_reg

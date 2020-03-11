@@ -25,7 +25,7 @@ df = utils.imputation(df)
 utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists)
 # utils.decrease_cat_size_handling(df, cat_vars, target)
 # df = utils.one_hot_encoding(df, cat_vars)
-utils.smooth_handling(df, target, cat_vars)
+utils.smooth_handling(df, cat_vars, target)
 
 xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)
 estimator = xgb_reg
@@ -53,7 +53,7 @@ df = df.merge(df_complete_predictions, on='id')
 
 # utils.decrease_cat_size_handling(df, cat_vars, target)
 # df = utils.one_hot_encoding(df, cat_vars)
-utils.smooth_handling(df, target, cat_vars)
+utils.smooth_handling(df, cat_vars, target)
 
 
 xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)

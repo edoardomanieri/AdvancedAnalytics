@@ -1,7 +1,7 @@
 import numpy as np
 import pandas as pd
 from CustomImputer import DataFrameImputer
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import mean_absolute_error
 
 
@@ -18,7 +18,7 @@ def train_test_index(df, test_size=0.2, random_state=42):
     df.loc[train.index, 'train'] = 1
 
 
-def smooth_handling(df, on, cat_vars, m=10):
+def smooth_handling(df, cat_vars, on, m=10):
     for var in cat_vars:
         replace_dict, mean = calc_smooth_mean(df[df['train'] == 1], by=var, on=on, m=10)
         df.loc[df['train'] == 1, :] = df.loc[df['train'] == 1, :].replace(replace_dict)
@@ -74,6 +74,18 @@ def fit_predict(df, estimator, target, id_col, target_out):
     test[target_out] = predictions
     df_out = test[['id', target_out]]
     return df_out
+
+
+def fit_mae(df, estimator, target, id_col, target_out):
+    X_train, y_train, X_test, y_test = split_train_test(df, target, 'id')
+    estimator.fit(X_train, y_train)
+    predictions = estimator.predict(X_test)
+    mae = mean_absolute_error(y_test, predictions)
+    test = df[df['train'] == 0].drop(columns=['train'])
+    test[target_out] = predictions
+    test['TRUE_' + target_out] = y_test
+    df_out = test[['id', target_out, 'TRUE_' + target_out]]
+    return df_out, mae
 
 
 def get_predictions(df, estimator, target, id_col, target_out):
@@ -158,3 +170,21 @@ def generate_dummies(df, features_list):
         df_new = pd.concat([df_new, pd.get_dummies(df[feature], drop_first=True, prefix=feature)], axis=1).copy()
         df_new = df_new.drop(columns=[feature])
     return df_new
+
+
+def CV_pipeline(df, estimator, cat_vars, cat_handler, target, cv=5, imputer=None, scaler=None):
+    kf = KFold(n_splits=cv)
+    mae_folds = []
+    for train_index, _ in kf.split(df):
+        df_temp = df.copy()
+        df_temp['train'] = 0
+        df_temp.loc[train_index, 'train'] = 1
+        df_temp = imputation(df_temp)
+        df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'max_price'], inplace=True)
+        cat_handler(df_temp, cat_vars, target)
+        if cat_handler == decrease_cat_size_handling:
+            df_temp = one_hot_encoding(df_temp, cat_vars)
+        _, mae = fit_mae(df_temp, estimator, target, 'id', 'TMP')
+        mae_folds.append(mae)
+    return mae_folds, sum(mae_folds)/cv
+
