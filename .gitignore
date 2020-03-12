@@ -1,0 +1,5 @@
+__pycache__/
+.ipynb_checkpoints/
+result.csv
+train.csv
+test.csv
