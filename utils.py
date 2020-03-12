@@ -188,3 +188,32 @@ def CV_pipeline(df, estimator, cat_vars, cat_handler, target, cv=5, imputer=None
         mae_folds.append(mae)
     return mae_folds, sum(mae_folds)/cv
 
+
+def full_CV_pipeline(df, estimator, cat_vars, cat_handler, cv=5, imputer=None, scaler=None):
+    kf = KFold(n_splits=cv)
+    mae_folds = []
+    #df['ssd_i7'] = np.where((df['brand'] == 'Apple') & (df['cpu'] == 'Intel Core i7'), 1, 0)
+    for train_index, _ in kf.split(df):
+        df_temp = df.copy()
+        df_temp['train'] = 0
+        df_temp.loc[train_index, 'train'] = 1
+        df_temp = imputation(df_temp)
+
+        df_min = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'max_price'])
+        cat_handler(df_min, cat_vars, 'min_price')
+        if cat_handler == decrease_cat_size_handling:
+            df_min = one_hot_encoding(df_min, cat_vars)
+        df_min_out, mae_min = fit_mae(df_min, estimator, 'min_price', 'id', 'MIN')
+        df_complete_predictions = get_predictions(df_min, estimator, 'min_price', 'id', 'min_price_pred')
+
+        df_max = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'min_price'])
+        df_max = df_max.merge(df_complete_predictions, on='id')
+        cat_handler(df_max, cat_vars, 'max_price')
+        if cat_handler == decrease_cat_size_handling:
+            df_max = one_hot_encoding(df_max, cat_vars)
+        df_max_out, mae_max = fit_mae(df_max, estimator, 'max_price', 'id', 'MAX')
+        df_fin = df_min_out.merge(df_max_out, on="id")
+        df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']] = df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']].mean(axis=1)
+        tot_mae = mean_absolute_error(df_fin['TRUE_MAX'], df_fin['MAX']) + mean_absolute_error(df_fin['TRUE_MIN'], df_fin['MIN'])
+        mae_folds.append(tot_mae)
+    return mae_folds, sum(mae_folds)/cv

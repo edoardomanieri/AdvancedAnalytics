@@ -5,14 +5,17 @@ import xgboost as xgb
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_absolute_error
+from sklearn.linear_model import LinearRegression
 import utils
 
 # CV
 df = pd.read_csv("train.csv")
 cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
-xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)
-utils.CV_pipeline(df, xgb_reg, cat_vars, utils.smooth_handling, 'min_price')
-
+xgb_reg = xgb.XGBRegressor(n_estimators=50, max_depth=3)
+lin_reg = LinearRegression()
+rf = RandomForestRegressor(n_estimators=100, criterion="mae")
+#utils.CV_pipeline(df, xgb_reg, cat_vars, utils.smooth_handling, 'min_price')
+utils.full_CV_pipeline(df, xgb_reg, cat_vars, utils.smooth_handling)
 
 ##### min_price
 df = pd.read_csv("train.csv")
@@ -31,7 +34,7 @@ utils.drop_columns(df, ['name', 'base_name', 'pixels_y', 'max_price'], variable_
 # df = utils.one_hot_encoding(df, cat_vars)
 utils.smooth_handling(df, cat_vars, target)
 
-xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)
+xgb_reg = xgb.XGBRegressor(n_estimators=50, max_depth=3)
 estimator = xgb_reg
 
 df_min, mae_min = utils.fit_mae(df, estimator, target, 'id', 'MIN')
@@ -56,10 +59,14 @@ df = df.merge(df_complete_predictions, on='id')
 # df = utils.one_hot_encoding(df, cat_vars)
 utils.smooth_handling(df, cat_vars, target)
 
-xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)
+xgb_reg = xgb.XGBRegressor(n_estimators=50, max_depth=3)
 estimator = xgb_reg
 
 df_max, mae_max = utils.fit_mae(df, estimator, target, 'id', 'MAX')
+
+df_fin = df_min.merge(df_max, on="id")
+df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']] = df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']].mean(axis=1)
+tot_mae = mean_absolute_error(df_fin['TRUE_MAX'], df_fin['MAX']) + mean_absolute_error(df_fin['TRUE_MIN'], df_fin['MIN'])
 
 # difference
 
