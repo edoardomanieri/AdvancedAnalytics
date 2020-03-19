@@ -3,6 +3,8 @@ import pandas as pd
 from CustomImputer import DataFrameImputer
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import mean_absolute_error
+import itertools
+import random
 
 
 def merge_train_test(train, test, target):
@@ -18,11 +20,13 @@ def train_test_index(df, test_size=0.2, random_state=42):
     df.loc[train.index, 'train'] = 1
 
 
-def smooth_handling(df, cat_vars, on, m=10):
+def smooth_handling(df, cat_vars, on, report_file=None, m=10):
     for var in cat_vars:
         replace_dict, mean = calc_smooth_mean(df[df['train'] == 1], by=var, on=on, m=10)
         df.loc[df['train'] == 1, :] = df.loc[df['train'] == 1, :].replace(replace_dict)
         df.loc[df['train'] == 0, var] = np.where(df.loc[df['train'] == 0, var].isin(replace_dict.keys()), df.loc[df['train'] == 0, var].map(replace_dict), mean).astype(float)
+    if report_file is not None:
+        report_file.write(f"smooth mean to handle categorical variables. Params: m={m} \n")
 
 
 def decrease_cat_size_handling(df, cat_vars, on):
@@ -31,18 +35,22 @@ def decrease_cat_size_handling(df, cat_vars, on):
         df.replace(replace_dict, inplace=True)
 
 
-def imputation(df):
+def imputation(df, report_file=None):
     imputer = DataFrameImputer()
     imputer.fit(df[df['train'] == 1])
+    if report_file is not None:
+        report_file.write("replace nan with mode, mean and median \n")
     return imputer.transform(df)
 
 
-def drop_columns(df, cols, variable_lists):
+def drop_columns(df, cols, variable_lists, report_file=None):
     df.drop(columns=cols, inplace=True)
     for col in cols:
         for l in variable_lists:
             if col in l:
                 l.remove(col)
+    if report_file is not None:
+        report_file.write(f"removed columns: {cols} \n")
 
 
 def one_hot_encoding(df, cat_vars):
@@ -66,7 +74,9 @@ def split_train_test_res(df, target, id_col):
     return X_train, y_train, X_test
 
 
-def fit_predict(df, estimator, target, id_col, target_out):
+def fit_predict(df, estimator, target, id_col, target_out, report_file=None):
+    if report_file is not None:
+        report_file.write(f"estimator: {estimator.__class__.__name__}, params: {estimator.get_params()} \n")
     X_train, y_train, X_test = split_train_test_res(df, target, 'id')
     estimator.fit(X_train, y_train)
     predictions = estimator.predict(X_test)
@@ -192,7 +202,6 @@ def CV_pipeline(df, estimator, cat_vars, cat_handler, target, cv=5, imputer=None
 def full_CV_pipeline(df, estimator, cat_vars, cat_handler, cv=5, imputer=None, scaler=None):
     kf = KFold(n_splits=cv)
     mae_folds = []
-    #df['ssd_i7'] = np.where((df['brand'] == 'Apple') & (df['cpu'] == 'Intel Core i7'), 1, 0)
     for train_index, _ in kf.split(df):
         df_temp = df.copy()
         df_temp['train'] = 0
@@ -217,3 +226,38 @@ def full_CV_pipeline(df, estimator, cat_vars, cat_handler, cv=5, imputer=None, s
         tot_mae = mean_absolute_error(df_fin['TRUE_MAX'], df_fin['MAX']) + mean_absolute_error(df_fin['TRUE_MIN'], df_fin['MIN'])
         mae_folds.append(tot_mae)
     return mae_folds, sum(mae_folds)/cv
+
+
+def gridsearch_CV(df, estimator, cat_vars, cat_handler, param_dist, cv=5):
+    m = np.inf
+    best_params = {}
+    for list_of_params in itertools.product(*param_dist.values()):
+        param_dict = {x: y for x, y in zip(param_dist.keys(), list_of_params)}
+        estimator.set_params(**param_dict)
+        _, res = full_CV_pipeline(df, estimator, cat_vars, cat_handler, cv)
+        print(param_dict)
+        print(res)
+        if res < m:
+            m = res
+            best_params = param_dict
+    return m, best_params
+
+
+def randomizedsearch_CV(df, estimator, cat_vars, cat_handler, param_dist, cv=5, trials=20):
+    m = np.inf
+    best_params = {}
+    param_dict_list = []
+    for list_of_params in itertools.product(*param_dist.values()):
+        param_dict = {x: y for x, y in zip(param_dist.keys(), list_of_params)}
+        param_dict_list.append(param_dict)
+    for _ in range(trials):
+        param_dict = random.choice(param_dict_list)
+        param_dict_list.remove(param_dict)
+        estimator.set_params(**param_dict)
+        _, res = full_CV_pipeline(df, estimator, cat_vars, cat_handler, cv)
+        print(param_dict)
+        print(res)
+        if res < m:
+            m = res
+            best_params = param_dict
+    return m, best_params

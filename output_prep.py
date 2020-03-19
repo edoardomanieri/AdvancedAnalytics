@@ -7,6 +7,13 @@ from sklearn.linear_model import LinearRegression, Lasso
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error
 import utils
+from pathlib import Path
+import datetime
+
+
+directory = "./" + datetime.now().strftime("%m-%d-%Y,%H:%M:%S")
+Path(directory).mkdir(parents=True, exist_ok=True)
+report_file = open(directory + "/report", "w+")
 
 ##### min_price
 train_min = pd.read_csv("train.csv")
@@ -21,16 +28,16 @@ target = 'min_price'
 num_vars = [col for col in df.columns if col not in cat_vars + dummy_vars + target_vars]
 variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 
-df = utils.imputation(df)
-utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists)
+df = utils.imputation(df, report_file)
+utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists, report_file)
 # utils.decrease_cat_size_handling(df, cat_vars, target)
 # df = utils.one_hot_encoding(df, cat_vars)
-utils.smooth_handling(df, cat_vars, target)
+utils.smooth_handling(df, cat_vars, target, report_file)
 
-xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)
+xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=4, gamma=0.3, colsample_bytree=0.6, subsample=1, min_child_weight=15)
 estimator = xgb_reg
 
-df_min = utils.fit_predict(df, estimator, target, 'id', 'MIN')
+df_min = utils.fit_predict(df, estimator, target, 'id', 'MIN', report_file)
 df_complete_predictions = utils.get_predictions(df, estimator, target, 'id', 'min_price_pred')
 
 
@@ -50,13 +57,14 @@ variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 df = utils.imputation(df)
 utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists)
 df = df.merge(df_complete_predictions, on='id')
+report_file.write("use min predictions to predict max \n")
 
 # utils.decrease_cat_size_handling(df, cat_vars, target)
 # df = utils.one_hot_encoding(df, cat_vars)
 utils.smooth_handling(df, cat_vars, target)
 
 
-xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=3)
+xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=4, gamma=0.3, colsample_bytree=0.6, subsample=1, min_child_weight=15)
 estimator = xgb_reg
 
 df_max = utils.fit_predict(df, estimator, target, 'id', 'MAX')
@@ -95,12 +103,12 @@ df_dif = test_dif[['id', 'DIF']]
 
 # put together predictions
 df_out = df_min.merge(df_max, on="id").set_index("id")
-
 df_out.loc[df_out['MAX'] < df_out['MIN'], ['MIN', 'MAX']] = df_out.loc[df_out['MAX'] < df_out['MIN'], ['MIN', 'MAX']].mean(axis=1)
+report_file.write("replace values where max smaller than min with mean of two values \n")
 
 df_out = df_max.merge(df_dif, on="id").set_index("id")
 df_out['MIN'] = df_out['MAX'] - df_out['DIF']
 df_out = df_out.loc[:, ['MIN', 'MAX']]
 
+df_out.to_csv(directory + "/result.csv")
 
-df_out.to_csv("result.csv")

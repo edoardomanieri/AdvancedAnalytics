@@ -1,5 +1,6 @@
 __pycache__/
 .ipynb_checkpoints/
+results/
 result.csv
 train.csv
 test.csv

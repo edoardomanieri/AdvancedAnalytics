@@ -9,12 +9,21 @@ from sklearn.linear_model import LinearRegression
 import utils
 
 # CV
+params = {
+        'n_estimators': [20, 50, 100, 200],
+        'min_child_weight': [5, 10, 15],
+        'gamma': [0.3, 0.5, 1, 1.5],
+        'subsample': [0.6, 0.8, 1.0],
+        'colsample_bytree': [0.6, 0.8, 1.0],
+        'max_depth': [2, 3, 4]
+        }
 df = pd.read_csv("train.csv")
 cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
 xgb_reg = xgb.XGBRegressor(n_estimators=50, max_depth=3)
 lin_reg = LinearRegression()
 rf = RandomForestRegressor(n_estimators=100, criterion="mae")
-#utils.CV_pipeline(df, xgb_reg, cat_vars, utils.smooth_handling, 'min_price')
+utils.randomizedsearch_CV(df, xgb_reg, cat_vars, utils.smooth_handling, params, trials=20)
+utils.gridsearch_CV(df, xgb_reg, cat_vars, utils.smooth_handling, params)
 utils.full_CV_pipeline(df, xgb_reg, cat_vars, utils.smooth_handling)
 
 ##### min_price
@@ -34,7 +43,7 @@ utils.drop_columns(df, ['name', 'base_name', 'pixels_y', 'max_price'], variable_
 # df = utils.one_hot_encoding(df, cat_vars)
 utils.smooth_handling(df, cat_vars, target)
 
-xgb_reg = xgb.XGBRegressor(n_estimators=50, max_depth=3)
+xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=4, gamma=0.3, colsample_bytree=0.6, subsample=1, min_child_weight=15)
 estimator = xgb_reg
 
 df_min, mae_min = utils.fit_mae(df, estimator, target, 'id', 'MIN')
@@ -59,7 +68,7 @@ df = df.merge(df_complete_predictions, on='id')
 # df = utils.one_hot_encoding(df, cat_vars)
 utils.smooth_handling(df, cat_vars, target)
 
-xgb_reg = xgb.XGBRegressor(n_estimators=50, max_depth=3)
+xgb_reg = xgb.XGBRegressor(n_estimators=200, max_depth=4, gamma=0.3, colsample_bytree=0.6, subsample=1, min_child_weight=15)
 estimator = xgb_reg
 
 df_max, mae_max = utils.fit_mae(df, estimator, target, 'id', 'MAX')
