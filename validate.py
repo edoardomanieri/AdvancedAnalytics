@@ -23,8 +23,8 @@ xgb_reg = xgb.XGBRegressor(n_estimators=50, max_depth=3)
 lin_reg = LinearRegression()
 rf = RandomForestRegressor(n_estimators=100, criterion="mae")
 utils.randomizedsearch_CV(df, xgb_reg, cat_vars, utils.smooth_handling, params, trials=20)
-utils.gridsearch_CV(df, xgb_reg, cat_vars, utils.smooth_handling, params)
-utils.full_CV_pipeline(df, xgb_reg, cat_vars, utils.smooth_handling)
+#utils.gridsearch_CV(df, xgb_reg, cat_vars, utils.smooth_handling, params)
+#utils.full_CV_pipeline(df, xgb_reg, cat_vars, utils.smooth_handling)
 
 ##### min_price
 df = pd.read_csv("train.csv")

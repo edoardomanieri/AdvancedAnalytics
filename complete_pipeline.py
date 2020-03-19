@@ -11,7 +11,7 @@ from pathlib import Path
 from datetime import datetime
 
 
-directory = "./results" + datetime.now().strftime("%m-%d-%Y,%H:%M:%S")
+directory = "./results/" + datetime.now().strftime("%m-%d-%Y,%H:%M:%S")
 Path(directory).mkdir(parents=True, exist_ok=True)
 report_file = open(directory + "/report", "w+")
 
@@ -33,17 +33,17 @@ df = utils.imputation(df, report_file=report_file)
 utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists, report_file=report_file)
 utils.smooth_handling(df, cat_vars, target, report_file=report_file)
 
-estimator = xgb.XGBRegressor(n_estimators=200, max_depth=4, gamma=0.3, colsample_bytree=0.6, subsample=1, min_child_weight=15)
+estimator = xgb.XGBRegressor(n_estimators=200, max_depth=4, gamma=1, colsample_bytree=0.6, subsample=1, min_child_weight=15)
 df_min = utils.fit_predict(df, estimator, target, 'id', 'MIN', report_file=report_file)
 df_complete_predictions = utils.get_predictions(df, estimator, target, 'id', 'min_price_pred')
 report_file.write("\n\n\n")
 
 ##### max_price
 report_file.write("MAX PRICE \n")
-train_min = pd.read_csv("train.csv")
-train_min.drop(columns=['min_price'], inplace=True)
-test_min = pd.read_csv("test.csv")
-df = utils.merge_train_test(train_min, test_min, 'min_price')
+train_max = pd.read_csv("train.csv")
+train_max.drop(columns=['min_price'], inplace=True)
+test_max = pd.read_csv("test.csv")
+df = utils.merge_train_test(train_max, test_max, 'max_price')
 
 cat_vars = ['name', 'brand', 'base_name', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
 dummy_vars = ['touchscreen', 'detachable_keyboard', 'discrete_gpu']
@@ -55,11 +55,11 @@ variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 df = utils.imputation(df, report_file=report_file)
 utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists, report_file=report_file)
 df = df.merge(df_complete_predictions, on='id')
-report_file.write("use min predictions to predict max \n")
 utils.smooth_handling(df, cat_vars, target, report_file=report_file)
 
-estimator = xgb.XGBRegressor(n_estimators=200, max_depth=4, gamma=0.3, colsample_bytree=0.6, subsample=1, min_child_weight=15)
+estimator = xgb.XGBRegressor(n_estimators=200, max_depth=4, gamma=1, colsample_bytree=0.6, subsample=1, min_child_weight=15)
 df_max = utils.fit_predict(df, estimator, target, 'id', 'MAX', report_file=report_file)
+report_file.write("\n\n\n")
 
 # put together predictions
 report_file.write("MERGING \n")

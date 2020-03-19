@@ -98,11 +98,13 @@ def fit_mae(df, estimator, target, id_col, target_out):
     return df_out, mae
 
 
-def get_predictions(df, estimator, target, id_col, target_out):
+def get_predictions(df, estimator, target, id_col, target_out, report_file=None):
+    if report_file is not None:
+        report_file.write("use min predictions to predict max. For train use y_train \n")
     X_train, y_train, X_test = split_train_test_res(df, target, 'id')
     estimator.fit(X_train, y_train)
     predictions_test = estimator.predict(X_test)
-    predictions_train = estimator.predict(X_train)
+    predictions_train = y_train
     test = df[df['train'] == 0].drop(columns=['train'])
     train = df[df['train'] == 1].drop(columns=['train'])
     test[target_out] = predictions_test
@@ -212,7 +214,7 @@ def full_CV_pipeline(df, estimator, cat_vars, cat_handler, cv=5, imputer=None, s
         cat_handler(df_min, cat_vars, 'min_price')
         if cat_handler == decrease_cat_size_handling:
             df_min = one_hot_encoding(df_min, cat_vars)
-        df_min_out, mae_min = fit_mae(df_min, estimator, 'min_price', 'id', 'MIN')
+        df_min_out, _ = fit_mae(df_min, estimator, 'min_price', 'id', 'MIN')
         df_complete_predictions = get_predictions(df_min, estimator, 'min_price', 'id', 'min_price_pred')
 
         df_max = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'min_price'])
@@ -220,7 +222,8 @@ def full_CV_pipeline(df, estimator, cat_vars, cat_handler, cv=5, imputer=None, s
         cat_handler(df_max, cat_vars, 'max_price')
         if cat_handler == decrease_cat_size_handling:
             df_max = one_hot_encoding(df_max, cat_vars)
-        df_max_out, mae_max = fit_mae(df_max, estimator, 'max_price', 'id', 'MAX')
+        df_max_out, _ = fit_mae(df_max, estimator, 'max_price', 'id', 'MAX')
+
         df_fin = df_min_out.merge(df_max_out, on="id")
         df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']] = df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']].mean(axis=1)
         tot_mae = mean_absolute_error(df_fin['TRUE_MAX'], df_fin['MAX']) + mean_absolute_error(df_fin['TRUE_MIN'], df_fin['MIN'])
