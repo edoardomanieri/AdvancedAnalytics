@@ -62,33 +62,26 @@ df_max = utils.fit_predict(df, estimator, target, 'id', 'MAX')
 
 ##### difference
 train_dif = pd.read_csv("train.csv")
+train_dif['dif'] = train_dif['max_price'] - train_dif['min_price']
+train_dif.drop(columns=['min_price', 'max_price'], inplace=True)
 test_dif = pd.read_csv("test.csv")
+df = utils.merge_train_test(train_dif, test_dif, 'dif')
 
 cat_vars = ['name', 'brand', 'base_name', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
 dummy_vars = ['touchscreen', 'detachable_keyboard', 'discrete_gpu']
-target_vars = ['min_price', 'max_price']
-num_vars = [col for col in train_dif.columns if col not in cat_vars + dummy_vars + target_vars]
+target_vars = ['min_price', 'max_price', 'dif']
+target = 'dif'
+num_vars = [col for col in df.columns if col not in cat_vars + dummy_vars + target_vars]
+variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 
-imputer = DataFrameImputer()
-imputer.fit(train_dif)
-train_dif = imputer.transform(train_dif)
-test_dif = imputer.transform(test_dif)
+df = utils.imputation(df, report_file=report_file)
+utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists, report_file=report_file)
+df = df.merge(df_complete_predictions, on='id')
+utils.smooth_handling(df, cat_vars, target, report_file=report_file)
 
-for var in cat_vars:
-    replace_dict, mean = calc_smooth_mean(train_dif, by=var, on="max_price", m=10)
-    train_dif.replace(replace_dict, inplace=True)
-    test_dif[var] = np.where(test_dif[var].isin(replace_dict.keys()), test_dif[var].map(replace_dict), mean).astype(float)
-
-y_train_dif = train_dif['max_price'].values - train_dif['min_price'].values
-X_train_dif = train_dif.drop(columns = ['max_price', 'min_price', 'id', 'name', 'base_name', 'pixels_y']).values
-X_test_dif = test_dif.drop(columns=['id', 'name', 'base_name', 'pixels_y']).values
-
-estimator = xgb.XGBRegressor(n_estimators=20, max_depth=3)
-
-estimator.fit(X_train_dif, y_train_dif)
-predictions = estimator.predict(X_test_dif)
-test_dif['DIF'] = predictions
-df_dif = test_dif[['id', 'DIF']]
+estimator = xgb.XGBRegressor(n_estimators=200, max_depth=4, gamma=1, colsample_bytree=0.6, subsample=1, min_child_weight=15)
+df_dif = utils.fit_predict(df, estimator, target, 'id', 'DIF', report_file=report_file)
+report_file.write("\n\n\n")
 
 
 # put together predictions
