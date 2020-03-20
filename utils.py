@@ -204,7 +204,7 @@ def CV_pipeline(df, estimator, cat_vars, cat_handler, target, cv=5, imputer=None
 def full_CV_pipeline(df, estimator, cat_vars, cat_handler, weights=None, cv=5, imputer=None, scaler=None):
     kf = KFold(n_splits=cv)
     mae_folds = []
-    if weights == None:
+    if weights is None:
         weights = [0.5, 0.5]
     for train_index, _ in kf.split(df):
         df_temp = df.copy()
@@ -229,8 +229,8 @@ def full_CV_pipeline(df, estimator, cat_vars, cat_handler, weights=None, cv=5, i
         df_comp_max = get_predictions(df_max, estimator, 'max_price', 'id', 'max_price_pred')
 
         df_dif = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'min_price', 'max_price'])
-        df_dif = df_dif.merge(df_comp_min, on='id')
-        df_dif = df_dif.merge(df_comp_max, on='id')
+        #df_dif = df_dif.merge(df_comp_min, on='id')
+        #df_dif = df_dif.merge(df_comp_max, on='id')
         cat_handler(df_dif, cat_vars, 'dif')
         if cat_handler == decrease_cat_size_handling:
             df_dif = one_hot_encoding(df_dif, cat_vars)
@@ -278,4 +278,74 @@ def randomizedsearch_CV(df, estimator, cat_vars, cat_handler, param_dist, weight
         if res < m:
             m = res
             best_params = param_dict
+    return m, best_params
+
+
+def full_CV_pipeline_m(df, estimators, cat_vars, cat_handler, weights=None, cv=5, imputer=None, scaler=None):
+    kf = KFold(n_splits=cv)
+    mae_folds = []
+    if weights is None:
+        weights = [0.5, 0.5]
+    for train_index, _ in kf.split(df):
+        df_temp = df.copy()
+        df_temp['dif'] = df_temp['max_price'] - df_temp['min_price']
+        df_temp['train'] = 0
+        df_temp.loc[train_index, 'train'] = 1
+        df_temp = imputation(df_temp)
+
+        df_min = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'max_price'])
+        cat_handler(df_min, cat_vars, 'min_price')
+        if cat_handler == decrease_cat_size_handling:
+            df_min = one_hot_encoding(df_min, cat_vars)
+        df_min_out, _ = fit_mae(df_min, estimators[0], 'min_price', 'id', 'MIN')
+        df_comp_min = get_predictions(df_min, estimators[0], 'min_price', 'id', 'min_price_pred')
+
+        df_max = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'min_price'])
+        df_max = df_max.merge(df_comp_min, on='id')
+        cat_handler(df_max, cat_vars, 'max_price')
+        if cat_handler == decrease_cat_size_handling:
+            df_max = one_hot_encoding(df_max, cat_vars)
+        df_max_out, _ = fit_mae(df_max, estimators[1], 'max_price', 'id', 'MAX')
+        df_comp_max = get_predictions(df_max, estimators[1], 'max_price', 'id', 'max_price_pred')
+
+        df_dif = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'min_price', 'max_price'])
+        #df_dif = df_dif.merge(df_comp_min, on='id')
+        #df_dif = df_dif.merge(df_comp_max, on='id')
+        cat_handler(df_dif, cat_vars, 'dif')
+        if cat_handler == decrease_cat_size_handling:
+            df_dif = one_hot_encoding(df_dif, cat_vars)
+        df_dif_out, _ = fit_mae(df_dif, estimators[2], 'dif', 'id', 'DIF')
+
+        df_fin = df_min_out.merge(df_max_out, on="id")
+        df_fin = df_fin.merge(df_dif_out, on="id")
+        df_fin['MAX'] = df_fin['MAX']*weights[0] + (df_fin['MIN'] + abs(df_fin['DIF']))*weights[1]
+        df_fin['MIN'] = df_fin['MIN']*weights[0] + (df_fin['MAX'] - abs(df_fin['DIF']))*weights[1]
+        df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']] = df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']].mean(axis=1)
+        tot_mae = mean_absolute_error(df_fin['TRUE_MAX'], df_fin['MAX']) + mean_absolute_error(df_fin['TRUE_MIN'], df_fin['MIN'])
+        mae_folds.append(tot_mae)
+    return mae_folds, sum(mae_folds)/cv
+
+
+def randomizedsearch_CV_m(df, estimators, cat_vars, cat_handler, param_dist, weights=None, cv=5, trials=20):
+    m = np.inf
+    best_params = {}
+    param_dict_list = []
+    for list_of_params in itertools.product(*param_dist.values()):
+        param_dict = {x: y for x, y in zip(param_dist.keys(), list_of_params)}
+        param_dict_list.append(param_dict)
+    for _ in range(trials):
+        param_dict_min = random.choice(param_dict_list)
+        param_dict_max = random.choice(param_dict_list)
+        param_dict_dif = random.choice(param_dict_list)
+        estimators[0].set_params(**param_dict_min)
+        estimators[1].set_params(**param_dict_max)
+        estimators[2].set_params(**param_dict_dif)
+        _, res = full_CV_pipeline_m(df, estimators, cat_vars, cat_handler, cv=cv, weights=weights)
+        print(param_dict_min)
+        print(param_dict_max)
+        print(param_dict_dif)
+        print(res)
+        if res < m:
+            m = res
+            best_params = [param_dict_min, param_dict_max, param_dict_dif]
     return m, best_params
