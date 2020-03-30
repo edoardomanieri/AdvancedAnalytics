@@ -5,25 +5,74 @@ from sklearn.metrics import mean_absolute_error
 from sklearn.linear_model import LinearRegression
 import utils
 
+
+cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
+one_hot_cat_vars = ['os', 'screen_surface']
+smooth_cat_vars = ['brand', 'os_details', 'cpu', 'gpu']
+decrease_cat_vars = []
+cols_to_be_dropped = ['name', 'base_name', 'cpu_details']
+weights = [0.3, 0.7]
+
 # CV
 
 params = {
-        'n_estimators': [50, 100, 200, 300],
+        'learning_rate': [0.05, 0.15, 0.20, 0.30],
+        'n_estimators': [100, 200, 300, 500],
         'min_child_weight': [5, 10, 15],
         'gamma': [0.3, 0.5, 1, 1.5],
         'subsample': [0.6, 0.8, 1.0],
         'colsample_bytree': [0.6, 0.8, 1.0],
         'max_depth': [2, 3, 4]
         }
+
 df = pd.read_csv("train.csv")
 cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
-xgb_reg = xgb.XGBRegressor(n_estimators=100, max_depth=4, gamma=0.3, colsample_bytree=0.6, subsample=0.6, min_child_weight=5)
-utils.randomizedsearch_CV_m(df, [xgb_reg, xgb_reg, xgb_reg], cat_vars, utils.smooth_handling, params, weights=[0.4, 0.6], trials=20)
-utils.gridsearch_CV(df, xgb_reg, cat_vars, utils.smooth_handling, params)
-utils.full_CV_pipeline(df, xgb_reg, cat_vars, utils.smooth_handling, weights=[0.4, 0.6])
+xgb_reg = xgb.XGBRegressor()
+estimators = utils.randomizedsearch_CV_m(df, [xgb_reg, xgb_reg, xgb_reg], cols_to_be_dropped, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, [params, params, params], weights=weights, trials=10)
+utils.save_estimators(estimators)
+
+params_min = {
+        'learning_rate': [0.10, 0.15, 0.18],
+        'n_estimators': [300, 500, 800],
+        'min_child_weight': [13, 15, 17],
+        'gamma': [0.5, 0.7],
+        'subsample': [0.3, 0.6],
+        'colsample_bytree': [0.7, 0.8],
+        'max_depth': [2, 3]
+        }
+
+params_max = {
+        'learning_rate': [0.25, 0.30, 0.4],
+        'n_estimators': [250, 300],
+        'min_child_weight': [3, 5, 7],
+        'gamma': [0.8, 1],
+        'subsample': [0.3, 0.6],
+        'colsample_bytree': [0.7, 0.8],
+        'max_depth': [2, 3]
+        }
+
+params_dif = {
+        'learning_rate': [0.10, 0.15, 0.18],
+        'n_estimators': [50, 80, 100, 150],
+        'min_child_weight': [3, 5, 7],
+        'gamma': [1.3, 1.5, 1.8],
+        'subsample': [0.8, 0.9],
+        'colsample_bytree': [0.4, 0.6],
+        'max_depth': [3, 4, 5]
+        }
+
+df = pd.read_csv("train.csv")
+cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
+xgb_reg = xgb.XGBRegressor()
+estimators = utils.randomizedsearch_CV_m(df, [xgb_reg, xgb_reg, xgb_reg], cols_to_be_dropped, one_hot_cat_vars, 
+                                         smooth_cat_vars, decrease_cat_vars, [params_min, params_max, params_dif], weights=weights, trials=100)
+utils.save_estimators(estimators)
+# utils.gridsearch_CV(df, xgb_reg, cat_vars, utils.smooth_handling, params)
+# utils.full_CV_pipeline(df, xgb_reg, cat_vars, utils.smooth_handling, weights=[0.4, 0.6])
 
 
 df = pd.read_csv("train.csv")
+df = df.drop(df[~df['detachable_keyboard'].isin([0, 1])].index).reset_index()
 utils.train_test_index(df)
 ##### min_price
 
@@ -37,13 +86,12 @@ num_vars = [col for col in df.columns if col not in cat_vars + dummy_vars + targ
 variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 
 df_min_in = utils.imputation(df_min_in)
-utils.drop_columns(df_min_in, ['name', 'base_name', 'pixels_y', 'max_price'], variable_lists)
-# utils.decrease_cat_size_handling(df_min_in, cat_vars, target)
-# df_min_in = utils.one_hot_encoding(df_min_in, cat_vars)
-utils.smooth_handling(df_min_in, cat_vars, target)
+utils.drop_columns(df_min_in, cols_to_be_dropped + ['max_price'], variable_lists)
+utils.decrease_cat_size_handling(df_min_in, decrease_cat_vars, target)
+df_min_in = utils.one_hot_encoding(df_min_in, one_hot_cat_vars)
+utils.smooth_handling(df_min_in, smooth_cat_vars, target)
 
-estimator = xgb.XGBRegressor(n_estimators=300, max_depth=3, gamma=0.3, colsample_bytree=0.6, subsample=0.8, min_child_weight=15)
-
+estimator = estimators[0]
 
 df_min, mae_min = utils.fit_mae(df_min_in, estimator, target, 'id', 'MIN')
 df_comp_min = utils.get_predictions(df_min_in, estimator, target, 'id', 'min_price_pred')
@@ -60,22 +108,23 @@ num_vars = [col for col in df.columns if col not in cat_vars + dummy_vars + targ
 variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 
 df_max_in = utils.imputation(df_max_in)
-utils.drop_columns(df_max_in, ['name', 'base_name', 'pixels_y', 'min_price'], variable_lists)
+utils.drop_columns(df_max_in, cols_to_be_dropped + ['min_price'], variable_lists)
 df_max_in = df_max_in.merge(df_comp_min, on='id')
 
-# utils.decrease_cat_size_handling(df, cat_vars, target)
-# df = utils.one_hot_encoding(df, cat_vars)
-utils.smooth_handling(df_max_in, cat_vars, target)
+utils.decrease_cat_size_handling(df_max_in, decrease_cat_vars, target)
+df_max_in = utils.one_hot_encoding(df_max_in, one_hot_cat_vars)
+utils.smooth_handling(df_max_in, smooth_cat_vars, target)
 
-estimator = xgb.XGBRegressor(n_estimators=300, max_depth=3, gamma=1.5, colsample_bytree=1, subsample=1, min_child_weight=10)
+estimator = estimators[1]
 
 df_max, mae_max = utils.fit_mae(df_max_in, estimator, target, 'id', 'MAX')
 df_comp_max = utils.get_predictions(df_max_in, estimator, target, 'id', 'max_price_pred')
 
 # difference
-df['dif'] = df['max_price'] - df['min_price']
+
 
 df_dif_in = df.copy()
+df_dif_in['dif'] = df_dif_in['max_price'] - df_dif_in['min_price']
 
 cat_vars = ['name', 'brand', 'base_name', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
 dummy_vars = ['touchscreen', 'detachable_keyboard', 'discrete_gpu']
@@ -85,12 +134,14 @@ num_vars = [col for col in df.columns if col not in cat_vars + dummy_vars + targ
 variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 
 df_dif_in = utils.imputation(df_dif_in)
-utils.drop_columns(df_dif_in, ['name', 'base_name', 'pixels_y'], variable_lists)
+utils.drop_columns(df_dif_in, cols_to_be_dropped + ['min_price', 'max_price'], variable_lists)
 #df_dif_in = df_dif_in.merge(df_comp_min, on='id')
 #df_dif_in = df_dif_in.merge(df_comp_max, on='id')
-utils.smooth_handling(df_dif_in, cat_vars, target)
+utils.decrease_cat_size_handling(df_dif_in, decrease_cat_vars, target)
+df_dif_in = utils.one_hot_encoding(df_dif_in, one_hot_cat_vars)
+utils.smooth_handling(df_dif_in, smooth_cat_vars, target)
 
-estimator = xgb.XGBRegressor(n_estimators=200, max_depth=3, gamma=0.5, colsample_bytree=0.6, subsample=0.6, min_child_weight=10)
+estimator = estimators[2]
 df_dif, mae_dif = utils.fit_mae(df_dif_in, estimator, target, 'id', 'DIF')
 
 
@@ -108,7 +159,7 @@ tot_mae3 = mean_absolute_error(df_fin3['TRUE_MAX'], df_fin3['MAX']) + mean_absol
 
 df_out = df_min.merge(df_max, on="id").set_index("id")
 df_out = df_out.merge(df_dif, on="id").set_index("id")
-df_out['MAX'] = df_out['MAX']*0.4 + (df_out['MIN'] + abs(df_out['DIF']))*0.6
-df_out['MIN'] = df_out['MIN']*0.4 + (df_out['MAX'] - abs(df_out['DIF']))*0.6
+df_out['MAX'] = df_out['MAX']*weights[0] + (df_out['MIN'] + abs(df_out['DIF']))*weights[1]
+df_out['MIN'] = df_out['MIN']*weights[0] + (df_out['MAX'] - abs(df_out['DIF']))*weights[1]
 df_out.loc[df_out['MAX'] < df_out['MIN'], ['MIN', 'MAX']] = df_out.loc[df_out['MAX'] < df_out['MIN'], ['MIN', 'MAX']].mean(axis=1)
 tot_mae = mean_absolute_error(df_out['TRUE_MAX'], df_out['MAX']) + mean_absolute_error(df_out['TRUE_MIN'], df_out['MIN'])

@@ -3,6 +3,7 @@ import pandas as pd
 from CustomImputer import DataFrameImputer
 from sklearn.model_selection import train_test_split, KFold
 from sklearn.metrics import mean_absolute_error
+from joblib import dump
 import itertools
 import random
 
@@ -14,8 +15,8 @@ def merge_train_test(train, test, target):
     return pd.concat([train, test])
 
 
-def train_test_index(df, test_size=0.2, random_state=42):
-    train, _ = train_test_split(df, test_size=0.2, random_state=42)
+def train_test_index(df, test_size=0.2, random_state=41):
+    train, _ = train_test_split(df, test_size=0.2, random_state=random_state)
     df['train'] = 0
     df.loc[train.index, 'train'] = 1
 
@@ -116,6 +117,7 @@ def get_predictions(df, estimator, target, id_col, target_out, report_file=None)
 def calc_smooth_mean(df, by, on, m):
     # Compute the global mean
     mean = df[on].mean()
+    m = len(df[by].unique())**1.5
     # Compute the number of values and the mean of each group
     agg = df.groupby(by)[on].agg(['count', 'mean']).reset_index()
     agg['smooth'] = (agg['count'] * agg['mean'] + m * mean) / (agg['count'] + m)
@@ -136,7 +138,6 @@ def huber_approx_obj(preds, dtrain):
 
 def reduce_categories(df_train, col, on, min_cat_extension=10):
     replace_dict = {}
-    l = len(df_train[col].unique())
     # dict with category and mean of target variable
     dict_categories = df_train.groupby(col)[on].mean().to_dict()
     # sort it
@@ -201,6 +202,12 @@ def CV_pipeline(df, estimator, cat_vars, cat_handler, target, cv=5, imputer=None
     return mae_folds, sum(mae_folds)/cv
 
 
+def feature_engineering(df, report_file=None):
+    if report_file is not None:
+        report_file.write("isApple for dif \n")
+    df['isApple'] = np.where(df['brand'] == 'Apple', 1, 0)
+
+
 def full_CV_pipeline(df, estimator, cat_vars, cat_handler, weights=None, cv=5, imputer=None, scaler=None):
     kf = KFold(n_splits=cv)
     mae_folds = []
@@ -208,19 +215,19 @@ def full_CV_pipeline(df, estimator, cat_vars, cat_handler, weights=None, cv=5, i
         weights = [0.5, 0.5]
     for train_index, _ in kf.split(df):
         df_temp = df.copy()
-        df_temp['dif'] = df_temp['max_price'] - df_temp['min_price']
+
         df_temp['train'] = 0
         df_temp.loc[train_index, 'train'] = 1
         df_temp = imputation(df_temp)
 
-        df_min = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'max_price'])
+        df_min = df_temp.drop(columns=['name', 'max_price'])
         cat_handler(df_min, cat_vars, 'min_price')
         if cat_handler == decrease_cat_size_handling:
             df_min = one_hot_encoding(df_min, cat_vars)
         df_min_out, _ = fit_mae(df_min, estimator, 'min_price', 'id', 'MIN')
         df_comp_min = get_predictions(df_min, estimator, 'min_price', 'id', 'min_price_pred')
 
-        df_max = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'min_price'])
+        df_max = df_temp.drop(columns=['name', 'min_price'])
         df_max = df_max.merge(df_comp_min, on='id')
         cat_handler(df_max, cat_vars, 'max_price')
         if cat_handler == decrease_cat_size_handling:
@@ -228,9 +235,9 @@ def full_CV_pipeline(df, estimator, cat_vars, cat_handler, weights=None, cv=5, i
         df_max_out, _ = fit_mae(df_max, estimator, 'max_price', 'id', 'MAX')
         df_comp_max = get_predictions(df_max, estimator, 'max_price', 'id', 'max_price_pred')
 
-        df_dif = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'min_price', 'max_price'])
-        #df_dif = df_dif.merge(df_comp_min, on='id')
-        #df_dif = df_dif.merge(df_comp_max, on='id')
+        df_temp['dif'] = df_temp['max_price'] - df_temp['min_price']
+        df_dif = df_temp.drop(columns=['name', 'min_price', 'max_price'])
+        feature_engineering(df_dif)
         cat_handler(df_dif, cat_vars, 'dif')
         if cat_handler == decrease_cat_size_handling:
             df_dif = one_hot_encoding(df_dif, cat_vars)
@@ -281,39 +288,38 @@ def randomizedsearch_CV(df, estimator, cat_vars, cat_handler, param_dist, weight
     return m, best_params
 
 
-def full_CV_pipeline_m(df, estimators, cat_vars, cat_handler, weights=None, cv=5, imputer=None, scaler=None):
+def full_CV_pipeline_m(df, estimators, col_to_drop, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, weights=None, cv=5):
+    df = df.drop(df[~df['detachable_keyboard'].isin([0, 1])].index).reset_index()
     kf = KFold(n_splits=cv)
     mae_folds = []
     if weights is None:
         weights = [0.5, 0.5]
     for train_index, _ in kf.split(df):
         df_temp = df.copy()
-        df_temp['dif'] = df_temp['max_price'] - df_temp['min_price']
         df_temp['train'] = 0
         df_temp.loc[train_index, 'train'] = 1
         df_temp = imputation(df_temp)
 
-        df_min = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'max_price'])
-        cat_handler(df_min, cat_vars, 'min_price')
-        if cat_handler == decrease_cat_size_handling:
-            df_min = one_hot_encoding(df_min, cat_vars)
+        df_min = df_temp.drop(columns= col_to_drop + ['max_price'])
+        decrease_cat_size_handling(df_min, decrease_cat_vars, 'min_price')
+        smooth_handling(df_min, smooth_cat_vars, 'min_price')
+        df_min = one_hot_encoding(df_min, one_hot_cat_vars)
         df_min_out, _ = fit_mae(df_min, estimators[0], 'min_price', 'id', 'MIN')
         df_comp_min = get_predictions(df_min, estimators[0], 'min_price', 'id', 'min_price_pred')
 
-        df_max = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'min_price'])
+        df_max = df_temp.drop(columns= col_to_drop + ['min_price'])
         df_max = df_max.merge(df_comp_min, on='id')
-        cat_handler(df_max, cat_vars, 'max_price')
-        if cat_handler == decrease_cat_size_handling:
-            df_max = one_hot_encoding(df_max, cat_vars)
+        decrease_cat_size_handling(df_max, decrease_cat_vars, 'max_price')
+        smooth_handling(df_max, smooth_cat_vars, 'max_price')
+        df_max = one_hot_encoding(df_max, one_hot_cat_vars)
         df_max_out, _ = fit_mae(df_max, estimators[1], 'max_price', 'id', 'MAX')
         df_comp_max = get_predictions(df_max, estimators[1], 'max_price', 'id', 'max_price_pred')
 
-        df_dif = df_temp.drop(columns=['name', 'base_name', 'pixels_y', 'min_price', 'max_price'])
-        #df_dif = df_dif.merge(df_comp_min, on='id')
-        #df_dif = df_dif.merge(df_comp_max, on='id')
-        cat_handler(df_dif, cat_vars, 'dif')
-        if cat_handler == decrease_cat_size_handling:
-            df_dif = one_hot_encoding(df_dif, cat_vars)
+        df_temp['dif'] = df_temp['max_price'] - df_temp['min_price']
+        df_dif = df_temp.drop(columns=col_to_drop + ['min_price', 'max_price'])
+        decrease_cat_size_handling(df_dif, decrease_cat_vars, 'dif')
+        smooth_handling(df_dif, smooth_cat_vars, 'dif')
+        df_dif = one_hot_encoding(df_dif, one_hot_cat_vars)
         df_dif_out, _ = fit_mae(df_dif, estimators[2], 'dif', 'id', 'DIF')
 
         df_fin = df_min_out.merge(df_max_out, on="id")
@@ -326,26 +332,46 @@ def full_CV_pipeline_m(df, estimators, cat_vars, cat_handler, weights=None, cv=5
     return mae_folds, sum(mae_folds)/cv
 
 
-def randomizedsearch_CV_m(df, estimators, cat_vars, cat_handler, param_dist, weights=None, cv=5, trials=20):
+def randomizedsearch_CV_m(df, estimators, col_to_drop, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, param_dists, weights=None, cv=5, trials=20):
     m = np.inf
     best_params = {}
-    param_dict_list = []
-    for list_of_params in itertools.product(*param_dist.values()):
-        param_dict = {x: y for x, y in zip(param_dist.keys(), list_of_params)}
-        param_dict_list.append(param_dict)
+    best_estimators = []
+    param_dict_list_min = []
+    param_dict_list_max = []
+    param_dict_list_dif = []
+    for list_of_params in itertools.product(*param_dists[0].values()):
+        param_dict = {x: y for x, y in zip(param_dists[0].keys(), list_of_params)}
+        param_dict_list_min.append(param_dict)
+    for list_of_params in itertools.product(*param_dists[1].values()):
+        param_dict = {x: y for x, y in zip(param_dists[1].keys(), list_of_params)}
+        param_dict_list_max.append(param_dict)
+    for list_of_params in itertools.product(*param_dists[2].values()):
+        param_dict = {x: y for x, y in zip(param_dists[2].keys(), list_of_params)}
+        param_dict_list_dif.append(param_dict)
     for _ in range(trials):
-        param_dict_min = random.choice(param_dict_list)
-        param_dict_max = random.choice(param_dict_list)
-        param_dict_dif = random.choice(param_dict_list)
+        param_dict_min = random.choice(param_dict_list_min)
+        param_dict_max = random.choice(param_dict_list_max)
+        param_dict_dif = random.choice(param_dict_list_dif)
         estimators[0].set_params(**param_dict_min)
         estimators[1].set_params(**param_dict_max)
         estimators[2].set_params(**param_dict_dif)
-        _, res = full_CV_pipeline_m(df, estimators, cat_vars, cat_handler, cv=cv, weights=weights)
+        folds, res = full_CV_pipeline_m(df, estimators, col_to_drop, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, cv=cv, weights=weights)
         print(param_dict_min)
         print(param_dict_max)
         print(param_dict_dif)
         print(res)
+        print(folds)
+        print(_)
         if res < m:
             m = res
             best_params = [param_dict_min, param_dict_max, param_dict_dif]
-    return m, best_params
+            best_estimators = [estimators[0], estimators[1], estimators[2]]
+    print(m)
+    print(best_params)
+    return best_estimators
+
+
+def save_estimators(estimators):
+    dump(estimators[0], './estimators/min_estimator.joblib')
+    dump(estimators[1], './estimators/max_estimator.joblib')
+    dump(estimators[2], './estimators/dif_estimator.joblib')

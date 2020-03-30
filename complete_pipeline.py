@@ -3,26 +3,37 @@ import xgboost as xgb
 import utils
 from pathlib import Path
 from datetime import datetime
+from joblib import load
 
 
 directory = "./results/" + datetime.now().strftime("%m-%d-%Y,%H:%M:%S")
 Path(directory).mkdir(parents=True, exist_ok=True)
 report_file = open(directory + "/report", "w+")
 
+estimators = []
+estimators.append(load("./estimators/min_estimator.joblib"))
+estimators.append(load("./estimators/max_estimator.joblib"))
+estimators.append(load("./estimators/dif_estimator.joblib"))
+
+
+cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
+one_hot_cat_vars = ['os', 'screen_surface']
+smooth_cat_vars = ['brand', 'os_details', 'cpu', 'gpu']
+decrease_cat_vars = []
+cols_to_be_dropped = ['name', 'base_name', 'cpu_details']
+weights = [0.3, 0.7]
+
+
 # pre-CV-validate
 df = pd.read_csv("train.csv")
-cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
-estimator_1 = xgb.XGBRegressor(n_estimators=300, max_depth=3, gamma=0.3, colsample_bytree=0.6, subsample=0.8, min_child_weight=15)
-estimator_2 = xgb.XGBRegressor(n_estimators=300, max_depth=3, gamma=1.5, colsample_bytree=1, subsample=1, min_child_weight=10)
-estimator_3 = xgb.XGBRegressor(n_estimators=200, max_depth=3, gamma=0.5, colsample_bytree=0.6, subsample=0.6, min_child_weight=10)
-estimators = [estimator_1, estimator_2, estimator_3]
-_, mae = utils.full_CV_pipeline_m(df, estimators, cat_vars, utils.smooth_handling, weights=[0.4, 0.6])
+_, mae = utils.full_CV_pipeline_m(df, estimators, cols_to_be_dropped, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, weights=weights)
 report_file.write(f"CV Score: {mae} \n\n\n")
 
 
 ##### min_price
 report_file.write("MIN PRICE \n")
 train_min = pd.read_csv("train.csv")
+train_min = train_min.drop(train_min[~train_min['detachable_keyboard'].isin([0,1])].index).reset_index()
 train_min.drop(columns=['max_price'], inplace=True)
 test_min = pd.read_csv("test.csv")
 df = utils.merge_train_test(train_min, test_min, 'min_price')
@@ -35,10 +46,12 @@ num_vars = [col for col in df.columns if col not in cat_vars + dummy_vars + targ
 variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 
 df = utils.imputation(df, report_file=report_file)
-utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists, report_file=report_file)
-utils.smooth_handling(df, cat_vars, target, report_file=report_file)
+utils.drop_columns(df, cols_to_be_dropped, variable_lists, report_file=report_file)
+utils.decrease_cat_size_handling(df, decrease_cat_vars, target)
+df = utils.one_hot_encoding(df, one_hot_cat_vars)
+utils.smooth_handling(df, smooth_cat_vars, target, report_file=report_file)
 
-estimator = xgb.XGBRegressor(n_estimators=300, max_depth=3, gamma=0.3, colsample_bytree=0.6, subsample=0.8, min_child_weight=15)
+estimator = estimators[0]
 df_min = utils.fit_predict(df, estimator, target, 'id', 'MIN', report_file=report_file)
 df_comp_min = utils.get_predictions(df, estimator, target, 'id', 'min_price_pred')
 report_file.write("\n\n\n")
@@ -46,6 +59,7 @@ report_file.write("\n\n\n")
 ##### max_price
 report_file.write("MAX PRICE \n")
 train_max = pd.read_csv("train.csv")
+train_max = train_max.drop(train_max[~train_max['detachable_keyboard'].isin([0,1])].index).reset_index()
 train_max.drop(columns=['min_price'], inplace=True)
 test_max = pd.read_csv("test.csv")
 df = utils.merge_train_test(train_max, test_max, 'max_price')
@@ -58,11 +72,13 @@ num_vars = [col for col in df.columns if col not in cat_vars + dummy_vars + targ
 variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 
 df = utils.imputation(df, report_file=report_file)
-utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists, report_file=report_file)
+utils.drop_columns(df, cols_to_be_dropped, variable_lists, report_file=report_file)
 df = df.merge(df_comp_min, on='id')
-utils.smooth_handling(df, cat_vars, target, report_file=report_file)
+utils.decrease_cat_size_handling(df, decrease_cat_vars, target)
+df = utils.one_hot_encoding(df, one_hot_cat_vars)
+utils.smooth_handling(df, smooth_cat_vars, target, report_file=report_file)
 
-estimator = xgb.XGBRegressor(n_estimators=300, max_depth=3, gamma=1.5, colsample_bytree=1, subsample=1, min_child_weight=10)
+estimator = estimators[1]
 df_max = utils.fit_predict(df, estimator, target, 'id', 'MAX', report_file=report_file)
 df_comp_max = utils.get_predictions(df, estimator, target, 'id', 'max_price_pred')
 report_file.write("\n\n\n")
@@ -70,6 +86,7 @@ report_file.write("\n\n\n")
 ##### difference
 report_file.write("DIFFERENCE \n")
 train_dif = pd.read_csv("train.csv")
+train_dif = train_dif.drop(train_dif[~train_dif['detachable_keyboard'].isin([0,1])].index).reset_index()
 train_dif['dif'] = train_dif['max_price'] - train_dif['min_price']
 train_dif.drop(columns=['min_price', 'max_price'], inplace=True)
 test_dif = pd.read_csv("test.csv")
@@ -83,10 +100,13 @@ num_vars = [col for col in df.columns if col not in cat_vars + dummy_vars + targ
 variable_lists = [cat_vars, dummy_vars, target_vars, num_vars]
 
 df = utils.imputation(df, report_file=report_file)
-utils.drop_columns(df, ['name', 'base_name', 'pixels_y'], variable_lists, report_file=report_file)
-utils.smooth_handling(df, cat_vars, target, report_file=report_file)
+utils.drop_columns(df, cols_to_be_dropped, variable_lists, report_file=report_file)
+# utils.feature_engineering(df, report_file=report_file)
+utils.decrease_cat_size_handling(df, decrease_cat_vars, target)
+df = utils.one_hot_encoding(df, one_hot_cat_vars)
+utils.smooth_handling(df, smooth_cat_vars, target, report_file=report_file)
 
-estimator = xgb.XGBRegressor(n_estimators=200, max_depth=3, gamma=0.5, colsample_bytree=0.6, subsample=0.6, min_child_weight=10)
+estimator = estimators[2]
 df_dif = utils.fit_predict(df, estimator, target, 'id', 'DIF', report_file=report_file)
 report_file.write("\n\n\n")
 
@@ -95,8 +115,8 @@ report_file.write("MERGING \n")
 
 df_out = df_min.merge(df_max, on="id").set_index("id")
 df_out = df_out.merge(df_dif, on="id").set_index("id")
-df_out['MAX'] = df_out['MAX']*0.4 + (df_out['MIN'] + abs(df_out['DIF']))*0.6
-df_out['MIN'] = df_out['MIN']*0.4 + (df_out['MAX'] - abs(df_out['DIF']))*0.6
+df_out['MAX'] = df_out['MAX']*weights[0] + (df_out['MIN'] + abs(df_out['DIF']))*weights[1]
+df_out['MIN'] = df_out['MIN']*weights[0] + (df_out['MAX'] - abs(df_out['DIF']))*weights[1]
 df_out.loc[df_out['MAX'] < df_out['MIN'], ['MIN', 'MAX']] = df_out.loc[df_out['MAX'] < df_out['MIN'], ['MIN', 'MAX']].mean(axis=1)
 df_out = df_out.loc[:, ['MIN', 'MAX']]
 report_file.write("replace values where max smaller than min with mean of two values \n")
