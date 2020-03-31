@@ -4,6 +4,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_absolute_error
 from sklearn.linear_model import LinearRegression
 import utils
+from sklearn.base import clone
 
 
 cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
@@ -28,43 +29,43 @@ params = {
 df = pd.read_csv("train.csv")
 cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
 xgb_reg = xgb.XGBRegressor()
-estimators = utils.randomizedsearch_CV_m(df, [xgb_reg, xgb_reg, xgb_reg], cols_to_be_dropped, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, [params, params, params], weights=weights, trials=10)
+estimators = utils.randomizedsearch_CV_m(df, [xgb_reg, xgb_reg, xgb_reg], cols_to_be_dropped, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, [params, params, params], weights=weights, trials=20)
 utils.save_estimators(estimators)
 
 params_min = {
-        'learning_rate': [0.10, 0.15, 0.18],
-        'n_estimators': [300, 500, 800],
-        'min_child_weight': [13, 15, 17],
-        'gamma': [0.5, 0.7],
-        'subsample': [0.3, 0.6],
-        'colsample_bytree': [0.7, 0.8],
-        'max_depth': [2, 3]
+        'learning_rate': [0.03, 0.05, 0.07, 0.1],
+        'n_estimators': [100, 200, 300, 400],
+        'min_child_weight': [3, 5, 7],
+        'gamma': [0.1, 0.3, 0.5, 1],
+        'subsample': [0.6, 0.8, 1.0],
+        'colsample_bytree': [0.4, 0.6, 0.8, 1.0],
+        'max_depth': [3, 4, 5]
         }
 
 params_max = {
-        'learning_rate': [0.25, 0.30, 0.4],
-        'n_estimators': [250, 300],
-        'min_child_weight': [3, 5, 7],
-        'gamma': [0.8, 1],
-        'subsample': [0.3, 0.6],
-        'colsample_bytree': [0.7, 0.8],
-        'max_depth': [2, 3]
+        'learning_rate': [0.05, 0.10, 0.15, 0.20],
+        'n_estimators': [50, 100, 200, 300],
+        'min_child_weight': [3, 5, 7, 9],
+        'gamma': [0.3, 0.5, 1, 1.5],
+        'subsample': [0.6, 0.8, 1.0],
+        'colsample_bytree': [0.6, 0.8, 0.9, 1.0],
+        'max_depth': [2, 3, 4]
         }
 
 params_dif = {
-        'learning_rate': [0.10, 0.15, 0.18],
-        'n_estimators': [50, 80, 100, 150],
-        'min_child_weight': [3, 5, 7],
-        'gamma': [1.3, 1.5, 1.8],
-        'subsample': [0.8, 0.9],
-        'colsample_bytree': [0.4, 0.6],
+        'learning_rate': [0.10, 0.15, 0.20, 0.3, 0.35],
+        'n_estimators': [150, 250, 350, 450],
+        'min_child_weight': [7, 10, 13, 15],
+        'gamma': [1, 1.5, 1.8, 2],
+        'subsample': [0.6, 0.8, 1.0],
+        'colsample_bytree': [0.2, 0.4, 0.6, 0.8, 1.0],
         'max_depth': [3, 4, 5]
         }
 
 df = pd.read_csv("train.csv")
 cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
 xgb_reg = xgb.XGBRegressor()
-estimators = utils.randomizedsearch_CV_m(df, [xgb_reg, xgb_reg, xgb_reg], cols_to_be_dropped, one_hot_cat_vars, 
+estimators = utils.randomizedsearch_CV_m(df, [xgb_reg, xgb_reg, xgb_reg], cols_to_be_dropped, one_hot_cat_vars,
                                          smooth_cat_vars, decrease_cat_vars, [params_min, params_max, params_dif], weights=weights, trials=100)
 utils.save_estimators(estimators)
 # utils.gridsearch_CV(df, xgb_reg, cat_vars, utils.smooth_handling, params)
@@ -91,7 +92,7 @@ utils.decrease_cat_size_handling(df_min_in, decrease_cat_vars, target)
 df_min_in = utils.one_hot_encoding(df_min_in, one_hot_cat_vars)
 utils.smooth_handling(df_min_in, smooth_cat_vars, target)
 
-estimator = estimators[0]
+estimator = clone(estimators[0])
 
 df_min, mae_min = utils.fit_mae(df_min_in, estimator, target, 'id', 'MIN')
 df_comp_min = utils.get_predictions(df_min_in, estimator, target, 'id', 'min_price_pred')
@@ -115,7 +116,7 @@ utils.decrease_cat_size_handling(df_max_in, decrease_cat_vars, target)
 df_max_in = utils.one_hot_encoding(df_max_in, one_hot_cat_vars)
 utils.smooth_handling(df_max_in, smooth_cat_vars, target)
 
-estimator = estimators[1]
+estimator = clone(estimators[1])
 
 df_max, mae_max = utils.fit_mae(df_max_in, estimator, target, 'id', 'MAX')
 df_comp_max = utils.get_predictions(df_max_in, estimator, target, 'id', 'max_price_pred')
@@ -141,7 +142,7 @@ utils.decrease_cat_size_handling(df_dif_in, decrease_cat_vars, target)
 df_dif_in = utils.one_hot_encoding(df_dif_in, one_hot_cat_vars)
 utils.smooth_handling(df_dif_in, smooth_cat_vars, target)
 
-estimator = estimators[2]
+estimator = clone(estimators[2])
 df_dif, mae_dif = utils.fit_mae(df_dif_in, estimator, target, 'id', 'DIF')
 
 

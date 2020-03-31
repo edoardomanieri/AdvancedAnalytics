@@ -6,6 +6,7 @@ from sklearn.metrics import mean_absolute_error
 from joblib import dump
 import itertools
 import random
+from sklearn.base import clone
 
 
 def merge_train_test(train, test, target):
@@ -117,7 +118,6 @@ def get_predictions(df, estimator, target, id_col, target_out, report_file=None)
 def calc_smooth_mean(df, by, on, m):
     # Compute the global mean
     mean = df[on].mean()
-    m = len(df[by].unique())**1.5
     # Compute the number of values and the mean of each group
     agg = df.groupby(by)[on].agg(['count', 'mean']).reset_index()
     agg['smooth'] = (agg['count'] * agg['mean'] + m * mean) / (agg['count'] + m)
@@ -290,7 +290,7 @@ def randomizedsearch_CV(df, estimator, cat_vars, cat_handler, param_dist, weight
 
 def full_CV_pipeline_m(df, estimators, col_to_drop, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, weights=None, cv=5):
     df = df.drop(df[~df['detachable_keyboard'].isin([0, 1])].index).reset_index()
-    kf = KFold(n_splits=cv)
+    kf = KFold(n_splits=cv, random_state=10)
     mae_folds = []
     if weights is None:
         weights = [0.5, 0.5]
@@ -353,9 +353,12 @@ def randomizedsearch_CV_m(df, estimators, col_to_drop, one_hot_cat_vars, smooth_
         param_dict_max = random.choice(param_dict_list_max)
         param_dict_dif = random.choice(param_dict_list_dif)
         estimators[0].set_params(**param_dict_min)
+        estimator_min = clone(estimators[0])
         estimators[1].set_params(**param_dict_max)
+        estimator_max = clone(estimators[1])
         estimators[2].set_params(**param_dict_dif)
-        folds, res = full_CV_pipeline_m(df, estimators, col_to_drop, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, cv=cv, weights=weights)
+        estimator_dif = clone(estimators[2])
+        folds, res = full_CV_pipeline_m(df, [estimator_min, estimator_max, estimator_dif], col_to_drop, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, cv=cv, weights=weights)
         print(param_dict_min)
         print(param_dict_max)
         print(param_dict_dif)
@@ -365,7 +368,7 @@ def randomizedsearch_CV_m(df, estimators, col_to_drop, one_hot_cat_vars, smooth_
         if res < m:
             m = res
             best_params = [param_dict_min, param_dict_max, param_dict_dif]
-            best_estimators = [estimators[0], estimators[1], estimators[2]]
+            best_estimators = [estimator_min, estimator_max, estimator_dif]
     print(m)
     print(best_params)
     return best_estimators

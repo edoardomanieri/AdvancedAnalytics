@@ -1,9 +1,9 @@
 import pandas as pd
-import xgboost as xgb
 import utils
 from pathlib import Path
 from datetime import datetime
 from joblib import load
+from sklearn.base import clone
 
 
 directory = "./results/" + datetime.now().strftime("%m-%d-%Y,%H:%M:%S")
@@ -33,7 +33,7 @@ report_file.write(f"CV Score: {mae} \n\n\n")
 ##### min_price
 report_file.write("MIN PRICE \n")
 train_min = pd.read_csv("train.csv")
-train_min = train_min.drop(train_min[~train_min['detachable_keyboard'].isin([0,1])].index).reset_index()
+train_min = train_min.drop(train_min[~train_min['detachable_keyboard'].isin([0, 1])].index).reset_index()
 train_min.drop(columns=['max_price'], inplace=True)
 test_min = pd.read_csv("test.csv")
 df = utils.merge_train_test(train_min, test_min, 'min_price')
@@ -51,7 +51,7 @@ utils.decrease_cat_size_handling(df, decrease_cat_vars, target)
 df = utils.one_hot_encoding(df, one_hot_cat_vars)
 utils.smooth_handling(df, smooth_cat_vars, target, report_file=report_file)
 
-estimator = estimators[0]
+estimator = clone(estimators[0])
 df_min = utils.fit_predict(df, estimator, target, 'id', 'MIN', report_file=report_file)
 df_comp_min = utils.get_predictions(df, estimator, target, 'id', 'min_price_pred')
 report_file.write("\n\n\n")
@@ -78,7 +78,7 @@ utils.decrease_cat_size_handling(df, decrease_cat_vars, target)
 df = utils.one_hot_encoding(df, one_hot_cat_vars)
 utils.smooth_handling(df, smooth_cat_vars, target, report_file=report_file)
 
-estimator = estimators[1]
+estimator = clone(estimators[1])
 df_max = utils.fit_predict(df, estimator, target, 'id', 'MAX', report_file=report_file)
 df_comp_max = utils.get_predictions(df, estimator, target, 'id', 'max_price_pred')
 report_file.write("\n\n\n")
@@ -106,7 +106,7 @@ utils.decrease_cat_size_handling(df, decrease_cat_vars, target)
 df = utils.one_hot_encoding(df, one_hot_cat_vars)
 utils.smooth_handling(df, smooth_cat_vars, target, report_file=report_file)
 
-estimator = estimators[2]
+estimator = clone(estimators[2])
 df_dif = utils.fit_predict(df, estimator, target, 'id', 'DIF', report_file=report_file)
 report_file.write("\n\n\n")
 
