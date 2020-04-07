@@ -20,9 +20,15 @@ cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_su
 one_hot_cat_vars = ['os', 'screen_surface']
 smooth_cat_vars = ['brand', 'os_details', 'cpu', 'gpu']
 decrease_cat_vars = []
-cols_to_be_dropped = ['name', 'base_name', 'cpu_details']
+cols_to_be_dropped = ['name', 'base_name',  'cpu_details']
 weights = [0.3, 0.7]
 
+report_file.write(f"Input params: \n")
+report_file.write(f"one hot encoded vars: {one_hot_cat_vars} \n")
+report_file.write(f"smoothed vars: {smooth_cat_vars} \n")
+report_file.write(f"decreased nummber of cat: {decrease_cat_vars} \n")
+report_file.write(f"dropped cols: {cols_to_be_dropped} \n")
+report_file.write(f"weights: {weights} \n")
 
 # pre-CV-validate
 df = pd.read_csv("train.csv")
@@ -33,7 +39,7 @@ report_file.write(f"CV Score: {mae} \n\n\n")
 ##### min_price
 report_file.write("MIN PRICE \n")
 train_min = pd.read_csv("train.csv")
-train_min = train_min.drop(train_min[~train_min['detachable_keyboard'].isin([0, 1])].index).reset_index()
+train_min = train_min.drop(train_min[~train_min['detachable_keyboard'].isin([0, 1])].index).reset_index(drop=True)
 train_min.drop(columns=['max_price'], inplace=True)
 test_min = pd.read_csv("test.csv")
 df = utils.merge_train_test(train_min, test_min, 'min_price')
@@ -59,7 +65,7 @@ report_file.write("\n\n\n")
 ##### max_price
 report_file.write("MAX PRICE \n")
 train_max = pd.read_csv("train.csv")
-train_max = train_max.drop(train_max[~train_max['detachable_keyboard'].isin([0,1])].index).reset_index()
+train_max = train_max.drop(train_max[~train_max['detachable_keyboard'].isin([0,1])].index).reset_index(drop=True)
 train_max.drop(columns=['min_price'], inplace=True)
 test_max = pd.read_csv("test.csv")
 df = utils.merge_train_test(train_max, test_max, 'max_price')
@@ -86,7 +92,7 @@ report_file.write("\n\n\n")
 ##### difference
 report_file.write("DIFFERENCE \n")
 train_dif = pd.read_csv("train.csv")
-train_dif = train_dif.drop(train_dif[~train_dif['detachable_keyboard'].isin([0,1])].index).reset_index()
+train_dif = train_dif.drop(train_dif[~train_dif['detachable_keyboard'].isin([0,1])].index).reset_index(drop=True)
 train_dif['dif'] = train_dif['max_price'] - train_dif['min_price']
 train_dif.drop(columns=['min_price', 'max_price'], inplace=True)
 test_dif = pd.read_csv("test.csv")

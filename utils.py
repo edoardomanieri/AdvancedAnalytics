@@ -289,7 +289,7 @@ def randomizedsearch_CV(df, estimator, cat_vars, cat_handler, param_dist, weight
 
 
 def full_CV_pipeline_m(df, estimators, col_to_drop, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, weights=None, cv=5):
-    df = df.drop(df[~df['detachable_keyboard'].isin([0, 1])].index).reset_index()
+    df = df.drop(df[~df['detachable_keyboard'].isin([0, 1])].index).reset_index(drop=True)
     kf = KFold(n_splits=cv, random_state=10)
     mae_folds = []
     if weights is None:

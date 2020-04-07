@@ -8,28 +8,28 @@ from sklearn.base import clone
 
 
 cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
-one_hot_cat_vars = ['os', 'screen_surface']
-smooth_cat_vars = ['brand', 'os_details', 'cpu', 'gpu']
+one_hot_cat_vars = ['os', 'screen_surface', 'brand']
+smooth_cat_vars = ['os_details', 'cpu', 'gpu']
 decrease_cat_vars = []
-cols_to_be_dropped = ['name', 'base_name', 'cpu_details']
+cols_to_be_dropped = ['name', 'base_name',  'cpu_details']
 weights = [0.3, 0.7]
 
 # CV
 
 params = {
-        'learning_rate': [0.05, 0.15, 0.20, 0.30],
-        'n_estimators': [100, 200, 300, 500],
-        'min_child_weight': [5, 10, 15],
-        'gamma': [0.3, 0.5, 1, 1.5],
-        'subsample': [0.6, 0.8, 1.0],
-        'colsample_bytree': [0.6, 0.8, 1.0],
-        'max_depth': [2, 3, 4]
+        'learning_rate': [0.05, 0.1, 0.15, 0.20, 0.3],
+        'n_estimators': [50, 100, 200, 300, 500],
+        'min_child_weight': [3, 5, 10, 15],
+        'gamma': [0.3, 0.5, 0.7, 1, 1.5],
+        'subsample': [0.4, 0.6, 0.8, 1.0],
+        'colsample_bytree': [0.4, 0.6, 0.8, 1.0],
+        'max_depth': [2, 3, 4, 5]
         }
 
 df = pd.read_csv("train.csv")
 cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
 xgb_reg = xgb.XGBRegressor()
-estimators = utils.randomizedsearch_CV_m(df, [xgb_reg, xgb_reg, xgb_reg], cols_to_be_dropped, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, [params, params, params], weights=weights, trials=20)
+estimators = utils.randomizedsearch_CV_m(df, [xgb_reg, xgb_reg, xgb_reg], cols_to_be_dropped, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, [params, params, params], weights=weights, trials=1)
 utils.save_estimators(estimators)
 
 params_min = {
@@ -66,14 +66,14 @@ df = pd.read_csv("train.csv")
 cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
 xgb_reg = xgb.XGBRegressor()
 estimators = utils.randomizedsearch_CV_m(df, [xgb_reg, xgb_reg, xgb_reg], cols_to_be_dropped, one_hot_cat_vars,
-                                         smooth_cat_vars, decrease_cat_vars, [params_min, params_max, params_dif], weights=weights, trials=100)
+                                         smooth_cat_vars, decrease_cat_vars, [params_min, params_max, params_dif], weights=weights, trials=1)
 utils.save_estimators(estimators)
 # utils.gridsearch_CV(df, xgb_reg, cat_vars, utils.smooth_handling, params)
 # utils.full_CV_pipeline(df, xgb_reg, cat_vars, utils.smooth_handling, weights=[0.4, 0.6])
 
 
 df = pd.read_csv("train.csv")
-df = df.drop(df[~df['detachable_keyboard'].isin([0, 1])].index).reset_index()
+df = df.drop(df[~df['detachable_keyboard'].isin([0, 1])].index).reset_index(drop=True)
 utils.train_test_index(df)
 ##### min_price
 
