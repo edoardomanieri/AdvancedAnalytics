@@ -6,3 +6,6 @@ result.csv
 train.csv
 test.csv
 credentials
+corr_matrix.png
+max_price.png
+min_price.png

@@ -16,7 +16,7 @@ def merge_train_test(train, test, target):
     return pd.concat([train, test])
 
 
-def train_test_index(df, test_size=0.2, random_state=41):
+def train_test_index(df, test_size=0.2, random_state=20):
     train, _ = train_test_split(df, test_size=0.2, random_state=random_state)
     df['train'] = 0
     df.loc[train.index, 'train'] = 1
@@ -244,9 +244,10 @@ def full_CV_pipeline(df, estimator, cat_vars, cat_handler, weights=None, cv=5, i
         df_dif_out, _ = fit_mae(df_dif, estimator, 'dif', 'id', 'DIF')
 
         df_fin = df_min_out.merge(df_max_out, on="id")
-        df_fin = df_fin.merge(df_dif_out, on="id")
-        df_fin['MAX'] = df_fin['MAX']*weights[0] + (df_fin['MIN'] + abs(df_fin['DIF']))*weights[1]
+        df_fin = df_fin.merge(df_dif_out, on="id") 
+        df_fin['tmp'] = df_fin['MAX']*weights[0] + (df_fin['MIN'] + abs(df_fin['DIF']))*weights[1]
         df_fin['MIN'] = df_fin['MIN']*weights[0] + (df_fin['MAX'] - abs(df_fin['DIF']))*weights[1]
+        df_fin['MAX'] = df_fin['tmp']
         df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']] = df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']].mean(axis=1)
         tot_mae = mean_absolute_error(df_fin['TRUE_MAX'], df_fin['MAX']) + mean_absolute_error(df_fin['TRUE_MIN'], df_fin['MIN'])
         mae_folds.append(tot_mae)
@@ -288,8 +289,25 @@ def randomizedsearch_CV(df, estimator, cat_vars, cat_handler, param_dist, weight
     return m, best_params
 
 
-def full_CV_pipeline_m(df, estimators, col_to_drop, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, weights=None, cv=5):
+def preprocessing(df):
     df = df.drop(df[~df['detachable_keyboard'].isin([0, 1])].index).reset_index(drop=True)
+    df.loc[df['screen_surface'] == 'glossy', 'screen_surface'] = 'Glossy'
+    df.loc[df['screen_surface'] == 'matte', 'screen_surface'] = 'Matte'
+    df['gpu_d'] = 'other'
+    df.loc[df['gpu'].str.contains('Intel').fillna(False), 'gpu_d'] = 'intel'
+    df.loc[df['gpu'].str.contains('NVIDIA').fillna(False), 'gpu_d'] = 'nvidia'
+    df.loc[df['gpu'].str.contains('AMD').fillna(False), 'gpu_d'] = 'amd'
+    df['brand_d'] = 'other'
+    df.loc[df['brand_d'].str.contains('Apple').fillna(False), 'brand_d'] = 'apple'
+    df.loc[df['brand_d'].str.contains('Dell').fillna(False), 'brand_d'] = 'dell'
+    df['cpu_d'] = 'other'
+    df.loc[df['cpu_d'].str.contains('i7').fillna(False), 'cpu_d'] = 'i7'
+    df.loc[df['cpu_d'].str.contains('i5').fillna(False), 'cpu_d'] = 'i5'
+    return df
+
+
+def full_CV_pipeline_m(df, estimators, col_to_drop, one_hot_cat_vars, smooth_cat_vars, decrease_cat_vars, weights=None, cv=5):
+    df = preprocessing(df)
     kf = KFold(n_splits=cv, random_state=10)
     mae_folds = []
     if weights is None:
@@ -324,8 +342,9 @@ def full_CV_pipeline_m(df, estimators, col_to_drop, one_hot_cat_vars, smooth_cat
 
         df_fin = df_min_out.merge(df_max_out, on="id")
         df_fin = df_fin.merge(df_dif_out, on="id")
-        df_fin['MAX'] = df_fin['MAX']*weights[0] + (df_fin['MIN'] + abs(df_fin['DIF']))*weights[1]
+        df_fin['tmp'] = df_fin['MAX']*weights[0] + (df_fin['MIN'] + abs(df_fin['DIF']))*weights[1]
         df_fin['MIN'] = df_fin['MIN']*weights[0] + (df_fin['MAX'] - abs(df_fin['DIF']))*weights[1]
+        df_fin['MAX'] = df_fin['tmp']
         df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']] = df_fin.loc[df_fin['MAX'] < df_fin['MIN'], ['MIN', 'MAX']].mean(axis=1)
         tot_mae = mean_absolute_error(df_fin['TRUE_MAX'], df_fin['MAX']) + mean_absolute_error(df_fin['TRUE_MIN'], df_fin['MIN'])
         mae_folds.append(tot_mae)

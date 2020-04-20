@@ -17,11 +17,12 @@ estimators.append(load("./estimators/dif_estimator.joblib"))
 
 
 cat_vars = ['brand', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
-one_hot_cat_vars = ['os', 'screen_surface']
+one_hot_cat_vars = ['os', 'screen_surface', 'gpu_d',  'cpu_d', 'brand_d']
 smooth_cat_vars = ['brand', 'os_details', 'cpu', 'gpu']
 decrease_cat_vars = []
-cols_to_be_dropped = ['name', 'base_name',  'cpu_details']
-weights = [0.3, 0.7]
+cols_to_be_dropped = ['name', 'base_name', 'cpu_details', 'pixels_y']
+weights = [0.6, 0.4]
+
 
 report_file.write(f"Input params: \n")
 report_file.write(f"one hot encoded vars: {one_hot_cat_vars} \n")
@@ -39,9 +40,10 @@ report_file.write(f"CV Score: {mae} \n\n\n")
 ##### min_price
 report_file.write("MIN PRICE \n")
 train_min = pd.read_csv("train.csv")
-train_min = train_min.drop(train_min[~train_min['detachable_keyboard'].isin([0, 1])].index).reset_index(drop=True)
+train_min = utils.preprocessing(train_min)
 train_min.drop(columns=['max_price'], inplace=True)
 test_min = pd.read_csv("test.csv")
+test_min = utils.preprocessing(test_min)
 df = utils.merge_train_test(train_min, test_min, 'min_price')
 
 cat_vars = ['name', 'brand', 'base_name', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
@@ -65,9 +67,11 @@ report_file.write("\n\n\n")
 ##### max_price
 report_file.write("MAX PRICE \n")
 train_max = pd.read_csv("train.csv")
+train_max = utils.preprocessing(train_max)
 train_max = train_max.drop(train_max[~train_max['detachable_keyboard'].isin([0,1])].index).reset_index(drop=True)
 train_max.drop(columns=['min_price'], inplace=True)
 test_max = pd.read_csv("test.csv")
+test_max = utils.preprocessing(test_max)
 df = utils.merge_train_test(train_max, test_max, 'max_price')
 
 cat_vars = ['name', 'brand', 'base_name', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
@@ -92,10 +96,12 @@ report_file.write("\n\n\n")
 ##### difference
 report_file.write("DIFFERENCE \n")
 train_dif = pd.read_csv("train.csv")
+train_dif = utils.preprocessing(train_dif)
 train_dif = train_dif.drop(train_dif[~train_dif['detachable_keyboard'].isin([0,1])].index).reset_index(drop=True)
 train_dif['dif'] = train_dif['max_price'] - train_dif['min_price']
 train_dif.drop(columns=['min_price', 'max_price'], inplace=True)
 test_dif = pd.read_csv("test.csv")
+test_dif = utils.preprocessing(test_dif)
 df = utils.merge_train_test(train_dif, test_dif, 'dif')
 
 cat_vars = ['name', 'brand', 'base_name', 'cpu', 'cpu_details', 'gpu', 'os', 'os_details', 'screen_surface']
@@ -121,8 +127,9 @@ report_file.write("MERGING \n")
 
 df_out = df_min.merge(df_max, on="id").set_index("id")
 df_out = df_out.merge(df_dif, on="id").set_index("id")
-df_out['MAX'] = df_out['MAX']*weights[0] + (df_out['MIN'] + abs(df_out['DIF']))*weights[1]
+df_out['tmp'] = df_out['MAX']*weights[0] + (df_out['MIN'] + abs(df_out['DIF']))*weights[1]
 df_out['MIN'] = df_out['MIN']*weights[0] + (df_out['MAX'] - abs(df_out['DIF']))*weights[1]
+df_out['MAX'] = df_out['tmp']
 df_out.loc[df_out['MAX'] < df_out['MIN'], ['MIN', 'MAX']] = df_out.loc[df_out['MAX'] < df_out['MIN'], ['MIN', 'MAX']].mean(axis=1)
 df_out = df_out.loc[:, ['MIN', 'MAX']]
 report_file.write("replace values where max smaller than min with mean of two values \n")
