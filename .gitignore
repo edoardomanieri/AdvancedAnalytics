@@ -2,10 +2,8 @@ __pycache__/
 .ipynb_checkpoints/
 results/
 estimators/
+images/
 result.csv
 train.csv
 test.csv
 credentials
-corr_matrix.png
-max_price.png
-min_price.png
